@@ -4,6 +4,8 @@ A GitHub Action that locks down egress traffic from your CI jobs using [iron-pro
 
 This matters because your CI jobs run arbitrary code: package installs, build scripts, third-party actions. A compromised dependency can exfiltrate secrets, phone home to a C2 server, or open a reverse shell. This action puts a firewall between your job and the internet so that only traffic you've explicitly approved gets through.
 
+**Using this in production?** Email matt@iron.sh and I'll help you roll this out across your org.
+
 ## How it works
 
 The action:
