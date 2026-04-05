@@ -25,7 +25,7 @@ inputs:
   warn:
     description: 'Log denied requests but do not block them'
     required: false
-    default: 'true'
+    default: 'false'
 
 runs:
   using: 'composite'
