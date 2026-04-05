@@ -108,14 +108,15 @@ jobs:
             exit 1
           fi
 
-      - name: Verify warn action in logs
+      - name: Verify warn action in logs for httpbin.org
         run: |
-          if ! grep -q '"action".*:.*"warn"' /var/log/iron-proxy.log; then
-            echo "Expected to find '\"action\": \"warn\"' in iron-proxy logs"
+          WARN_LINE=$(jq -c 'select(.audit.action == "warn" and .audit.host == "httpbin.org")' /var/log/iron-proxy.log | head -1)
+          if [ -z "$WARN_LINE" ]; then
+            echo "Expected a warn audit log entry for httpbin.org"
             cat /var/log/iron-proxy.log
             exit 1
           fi
-          echo "Found warn action in logs"
+          echo "Found warn entry: $WARN_LINE"
 
       - name: Generate egress summary
         if: always()
