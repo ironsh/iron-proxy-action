@@ -6,44 +6,11 @@ inputs:
     description: 'Path to the iron-proxy log file'
     required: false
     default: '/var/log/iron-proxy.log'
+  show-full-paths:
+    description: 'Show per-path request breakdown in a collapsible section'
+    required: false
+    default: 'false'
 
 runs:
-  using: 'composite'
-  steps:
-    - name: Generate iron-proxy summary
-      if: always()
-      shell: bash
-      run: |
-        LOG_FILE="${{ inputs.log-file }}"
-        if [ ! -f "$LOG_FILE" ]; then
-          echo "::warning::iron-proxy log file not found: $LOG_FILE"
-          exit 0
-        fi
-
-        # Parse the log into a summary table
-        jq -r '.audit | "\(.host)\t\(.method)\t\(.path)\t\(.action)"' "$LOG_FILE" 2>/dev/null \
-          | sort | uniq -c | sort -rn > /tmp/iron-proxy-summary.txt
-
-        if [ ! -s /tmp/iron-proxy-summary.txt ]; then
-          echo "::notice::No iron-proxy traffic recorded"
-          exit 0
-        fi
-
-        TOTAL=$(wc -l < "$LOG_FILE" | xargs)
-        ALLOWED=$(jq -r '.audit.action' "$LOG_FILE" 2>/dev/null | grep -c '^allow$' || true)
-        DENIED=$(jq -r '.audit.action' "$LOG_FILE" 2>/dev/null | grep -c '^deny$' || true)
-        UNIQUE_HOSTS=$(jq -r '.audit.host' "$LOG_FILE" 2>/dev/null | sort -u | wc -l | xargs)
-
-        {
-          echo "## Iron Proxy Egress Summary"
-          echo ""
-          echo "**${TOTAL}** requests to **${UNIQUE_HOSTS}** unique hosts — **${ALLOWED}** allowed, **${DENIED}** denied"
-          echo ""
-          echo "| Count | Host | Method | Path | Action |"
-          echo "|------:|------|--------|------|--------|"
-          while read -r count host method path action; do
-            icon="✅"
-            if [ "$action" = "deny" ]; then icon="❌"; fi
-            echo "| ${count} | ${host} | ${method} | ${path} | ${icon} ${action} |"
-          done < /tmp/iron-proxy-summary.txt
-        } >> "$GITHUB_STEP_SUMMARY"
+  using: 'node24'
+  main: 'index.js'
