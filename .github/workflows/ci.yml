@@ -70,6 +70,64 @@ jobs:
         if: always()
         run: cat /var/log/iron-proxy.log
 
+  warn-mode-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create egress rules (only example.com)
+        run: |
+          cat > egress-rules.yaml <<'EOF'
+          domains:
+            - "example.com"
+          EOF
+
+      - name: Set up iron-proxy in warn mode
+        uses: ./
+        with:
+          egress-rules: egress-rules.yaml
+          warn: true
+          disable-sudo: true
+          disable-docker: true
+
+      - name: Allowed host should succeed
+        run: |
+          HTTP_STATUS=$(curl -o /dev/null -w '%{http_code}' https://example.com)
+          echo "example.com returned HTTP $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "Expected example.com to succeed, got HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+      - name: Non-allowlisted host should still succeed in warn mode
+        run: |
+          HTTP_STATUS=$(curl -o /dev/null -w '%{http_code}' --max-time 10 https://httpbin.org/get)
+          echo "httpbin.org returned HTTP $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "Expected httpbin.org to succeed in warn mode, got HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+      - name: Verify warn action in logs for httpbin.org
+        run: |
+          WARN_LINE=$(jq -c 'select(.audit.host == "httpbin.org" and .request_transforms[]?.annotations?.action == "warn")' /var/log/iron-proxy.log | head -1)
+          if [ -z "$WARN_LINE" ]; then
+            echo "Expected a warn audit log entry for httpbin.org"
+            cat /var/log/iron-proxy.log
+            exit 1
+          fi
+          echo "Found warn entry: $WARN_LINE"
+
+      - name: Generate egress summary
+        if: always()
+        uses: ./summary
+        with:
+          show-full-paths: true
+
+      - name: Dump iron-proxy log
+        if: always()
+        run: cat /var/log/iron-proxy.log
+
   npm-test:
     runs-on: ubuntu-latest
     steps:

@@ -1,6 +1,7 @@
 const fs = require("fs");
 
 const GREEN = "\x1b[32m";
+const YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
 const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
@@ -23,7 +24,14 @@ for (const line of lines) {
   if (!line.trim()) continue;
   try {
     const entry = JSON.parse(line);
-    if (entry.audit) audits.push(entry.audit);
+    if (!entry.audit) continue;
+    const audit = { ...entry.audit };
+    // Check if any request transform has a warn annotation
+    const warned = (entry.request_transforms || []).some(
+      (t) => t.annotations && t.annotations.action === "warn"
+    );
+    if (warned) audit.action = "warn";
+    audits.push(audit);
   } catch {
     // skip non-JSON lines
   }
@@ -35,15 +43,17 @@ if (audits.length === 0) {
 }
 
 const allowed = audits.filter((a) => a.action === "allow").length;
+const warned = audits.filter((a) => a.action === "warn").length;
 const denied = audits.filter((a) => a.action === "reject").length;
 
 // Roll up by host
 const hostCounts = {};
 for (const a of audits) {
   const key = a.host;
-  if (!hostCounts[key]) hostCounts[key] = { allow: 0, reject: 0, total: 0 };
+  if (!hostCounts[key]) hostCounts[key] = { allow: 0, warn: 0, reject: 0, total: 0 };
   hostCounts[key].total++;
   if (a.action === "allow") hostCounts[key].allow++;
+  if (a.action === "warn") hostCounts[key].warn++;
   if (a.action === "reject") hostCounts[key].reject++;
 }
 
@@ -69,22 +79,40 @@ const truncPath = (s, max = 64) =>
 console.log("---");
 console.log("");
 console.log(`${BOLD}Iron Proxy Egress Summary${RESET}`);
-console.log(
-  `${audits.length} requests — ${GREEN}${allowed} allowed${RESET}, ${RED}${denied} denied${RESET}`
-);
+const summaryParts = [`${GREEN}${allowed} allowed${RESET}`];
+if (warned > 0) summaryParts.push(`${YELLOW}${warned} warned${RESET}`);
+summaryParts.push(`${RED}${denied} denied${RESET}`);
+console.log(`${audits.length} requests — ${summaryParts.join(", ")}`);
 console.log("");
-console.log(
-  `${BOLD}${col("HOST", 36)}${col("TOTAL", 8)}${col("ALLOWED", 10)}DENIED${RESET}`
-);
-console.log(
-  `${col("------------------------------------", 36)}${col("-----", 8)}${col("-------", 10)}------`
-);
-for (const [host, c] of hostsSorted) {
-  const deniedStr = c.reject > 0 ? `${RED}${c.reject}${RESET}` : "0";
-  const allowedStr = c.allow > 0 ? `${GREEN}${c.allow}${RESET}` : "0";
+const hasWarns = warned > 0;
+if (hasWarns) {
   console.log(
-    `${col(host, 36)}${col(c.total, 8)}${col("", 0)}${allowedStr}${" ".repeat(10 - c.allow.toString().length)}${deniedStr}`
+    `${BOLD}${col("HOST", 36)}${col("TOTAL", 8)}${col("ALLOWED", 10)}${col("WARNED", 10)}DENIED${RESET}`
   );
+  console.log(
+    `${col("------------------------------------", 36)}${col("-----", 8)}${col("-------", 10)}${col("------", 10)}------`
+  );
+} else {
+  console.log(
+    `${BOLD}${col("HOST", 36)}${col("TOTAL", 8)}${col("ALLOWED", 10)}DENIED${RESET}`
+  );
+  console.log(
+    `${col("------------------------------------", 36)}${col("-----", 8)}${col("-------", 10)}------`
+  );
+}
+for (const [host, c] of hostsSorted) {
+  const allowedStr = c.allow > 0 ? `${GREEN}${c.allow}${RESET}` : "0";
+  const warnedStr = c.warn > 0 ? `${YELLOW}${c.warn}${RESET}` : "0";
+  const deniedStr = c.reject > 0 ? `${RED}${c.reject}${RESET}` : "0";
+  if (hasWarns) {
+    console.log(
+      `${col(host, 36)}${col(c.total, 8)}${col("", 0)}${allowedStr}${" ".repeat(10 - c.allow.toString().length)}${warnedStr}${" ".repeat(10 - c.warn.toString().length)}${deniedStr}`
+    );
+  } else {
+    console.log(
+      `${col(host, 36)}${col(c.total, 8)}${col("", 0)}${allowedStr}${" ".repeat(10 - c.allow.toString().length)}${deniedStr}`
+    );
+  }
 }
 console.log("");
 console.log("");
@@ -104,7 +132,7 @@ if (showFullPaths) {
   );
   for (const [key, count] of detailSorted) {
     const [host, method, path, action] = key.split("\t");
-    const color = action === "allow" ? GREEN : RED;
+    const color = action === "allow" ? GREEN : action === "warn" ? YELLOW : RED;
     console.log(
       `${col(count, 8)}${col(host, 32)}${col(method, 8)}${col(truncPath(path), 66)}${color}${action}${RESET}`
     );
