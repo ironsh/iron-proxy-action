@@ -137,6 +137,10 @@ rules:
 | `log-file` | `/var/log/iron-proxy.log` | Path to the iron-proxy log file |
 | `show-full-paths` | `false` | Show per-path request breakdown in a collapsible section |
 
+## Using this in production?
+
+Email matt@iron.sh and I'll help you roll this out across your org.
+
 ## Security model
 
 The action revokes sudo and Docker access by default. This prevents subsequent workflow steps from modifying iptables rules, DNS config, or running containers that bypass the proxy.

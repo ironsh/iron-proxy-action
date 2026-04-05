@@ -88,6 +88,10 @@ for (const [host, c] of hostsSorted) {
 }
 console.log("");
 console.log("");
+console.log(
+  `Using this in production? Let's harden it properly. Email matt@iron.sh`
+);
+console.log("");
 
 // Detail output: per-path breakdown in a collapsible group
 if (showFullPaths) {
