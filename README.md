@@ -6,19 +6,6 @@ This matters because your CI jobs run arbitrary code: package installs, build sc
 
 **Using this in production?** Email matt@iron.sh and I'll help you roll this out across your org.
 
-## How it works
-
-The action:
-
-1. Downloads and installs iron-proxy
-2. Generates an ephemeral CA certificate and trusts it system-wide
-3. Redirects all DNS to the proxy and locks down outbound traffic with iptables
-4. Revokes sudo and Docker access so subsequent steps can't bypass the proxy
-
-All outbound HTTP/HTTPS traffic is routed through iron-proxy, which terminates TLS and checks every request against your allowlist before forwarding it upstream.
-
-At the end of each run, the **summary action** prints a table of every domain your job contacted: how many requests were allowed, how many were denied, and where to tighten or loosen your rules.
-
 ## Quick start
 
 ### 1. Create an egress rules file
@@ -57,7 +44,22 @@ jobs:
         if: always()
 ```
 
-That's it. Your job now has an egress firewall.
+That's it. Your job now has an egress firewall. You can see every endpoint your pipeline attempted to hit in the summary:
+
+![Egress summary](egress-summary.png)
+
+## How it works
+
+The action:
+
+1. Downloads and installs iron-proxy
+2. Generates an ephemeral CA certificate and trusts it system-wide
+3. Redirects all DNS to the proxy and locks down outbound traffic with iptables
+4. Revokes sudo and Docker access so subsequent steps can't bypass the proxy
+
+All outbound HTTP/HTTPS traffic is routed through iron-proxy, which terminates TLS and checks every request against your allowlist before forwarding it upstream.
+
+At the end of each run, the **summary action** prints a table of every domain your job contacted: how many requests were allowed, how many were denied, and where to tighten or loosen your rules.
 
 ## Rolling out: warn first, enforce second
 
