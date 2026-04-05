@@ -1,0 +1,172 @@
+name: 'Iron Proxy'
+description: 'Iron Proxy GitHub Action'
+
+inputs:
+  version:
+    description: 'Version of Iron Proxy to install'
+    required: false
+    default: 'latest'
+  egress-rules:
+    description: 'Path to the egress rules file'
+    required: false
+    default: 'egress-rules.yaml'
+  disable-sudo:
+    description: 'Remove sudo access for the runner user to prevent subsequent steps from bypassing the proxy'
+    required: false
+    default: 'true'
+  upstream-resolver:
+    description: 'Upstream DNS resolver address'
+    required: false
+    default: '8.8.8.8:53'
+  disable-docker:
+    description: 'Remove the runner user from the docker group to prevent subsequent steps from bypassing the proxy'
+    required: false
+    default: 'true'
+  warn:
+    description: 'Log denied requests but do not block them'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up iron-proxy
+      shell: bash
+      run: |
+        # Install dependencies
+        echo "::group::Install dependencies"
+        if ! command -v jq &>/dev/null; then
+          sudo apt-get install -y -qq jq > /dev/null
+        fi
+        if ! command -v yq &>/dev/null; then
+          YQ_VERSION="v4.44.1"
+          curl -fsSL -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          chmod +x /tmp/yq
+          sudo mv /tmp/yq /usr/local/bin/yq
+        fi
+        echo "::endgroup::"
+
+        # Resolve version
+        echo "::group::Resolve iron-proxy version"
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          VERSION=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/ironsh/iron-proxy/releases/latest | jq -r '.tag_name | ltrimstr("v")')
+        fi
+        echo "Using iron-proxy v${VERSION}"
+        echo "::endgroup::"
+
+        # Download and install iron-proxy
+        echo "::group::Download and install iron-proxy"
+        curl -fsSL -o /tmp/iron-proxy.tgz \
+          https://github.com/ironsh/iron-proxy/releases/download/v${VERSION}/iron-proxy_${VERSION}_linux_amd64.tar.gz
+        tar -xzf /tmp/iron-proxy.tgz -C /tmp
+        sudo mv /tmp/iron-proxy /usr/local/bin/iron-proxy
+        sudo chmod +x /usr/local/bin/iron-proxy
+        echo "::endgroup::"
+
+        # Generate a CA for TLS interception
+        echo "::group::Generate CA for TLS interception"
+        mkdir -p /tmp/iron-proxy-ca
+        openssl genrsa -out /tmp/iron-proxy-ca/ca.key 2048 2>/dev/null
+        openssl req -x509 -new -nodes \
+          -key /tmp/iron-proxy-ca/ca.key \
+          -sha256 -days 1 \
+          -subj "/CN=iron-proxy CA" \
+          -addext "basicConstraints=critical,CA:TRUE" \
+          -addext "keyUsage=critical,keyCertSign" \
+          -out /tmp/iron-proxy-ca/ca.crt 2>/dev/null
+        echo "::endgroup::"
+
+        # Generate iron-proxy config
+        echo "::group::Generate iron-proxy config"
+        EGRESS_RULES="${{ inputs.egress-rules }}"
+        if [ ! -f "$EGRESS_RULES" ]; then
+          echo "::error::Egress rules file not found: $EGRESS_RULES"
+          exit 1
+        fi
+
+        cat > /tmp/iron-proxy.yaml <<'EOF'
+        dns:
+          listen: ":53"
+          proxy_ip: "127.0.0.1"
+          upstream_resolver: "${{ inputs.upstream-resolver }}"
+        proxy:
+          http_listen: ":80"
+          https_listen: ":443"
+        tls:
+          ca_cert: "/tmp/iron-proxy-ca/ca.crt"
+          ca_key: "/tmp/iron-proxy-ca/ca.key"
+        transforms:
+          - name: allowlist
+            warn: ${{ inputs.warn }}
+            config:
+              # GitHub Actions infrastructure (always allowed)
+              domains:
+                - "github.com"
+                - "*.github.com"
+                - "*.githubusercontent.com"
+                - "*.actions.githubusercontent.com"
+                - "*.pkg.github.com"
+                - "*.blob.core.windows.net"
+                - "api.github.com"
+        log:
+          level: "info"
+        EOF
+        sed -i 's/^        //' /tmp/iron-proxy.yaml
+
+        # Merge user egress rules into the allowlist config
+        "${{ github.action_path }}/merge-egress-rules.sh" "$EGRESS_RULES" /tmp/iron-proxy.yaml
+        echo "::endgroup::"
+
+        # Trust the CA system-wide
+        echo "::group::Trust CA system-wide"
+        sudo cp /tmp/iron-proxy-ca/ca.crt \
+          /usr/local/share/ca-certificates/iron-proxy-ca.crt
+        sudo update-ca-certificates
+        echo "SSL_CERT_FILE=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
+        echo "NODE_EXTRA_CA_CERTS=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
+        echo "REQUESTS_CA_BUNDLE=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
+        echo "UV_NATIVE_TLS=true" >> $GITHUB_ENV
+        echo "::endgroup::"
+
+        # Stop systemd-resolved to free port 53
+        echo "::group::Stop systemd-resolved"
+        sudo systemctl stop systemd-resolved || true
+        echo "::endgroup::"
+
+        # Route DNS through the proxy
+        echo "::group::Route DNS through the proxy"
+        sudo bash -c 'echo "nameserver 127.0.0.1" > /etc/resolv.conf'
+        echo "::endgroup::"
+
+        # Lock down outbound traffic with iptables
+        echo "::group::Configure iptables"
+        sudo iptables -A OUTPUT -o lo -j ACCEPT
+        sudo iptables -A OUTPUT -m owner --uid-owner root -j ACCEPT
+        sudo iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+        sudo iptables -A OUTPUT -j REJECT --reject-with icmp-port-unreachable
+        echo "::endgroup::"
+
+        # Start iron-proxy
+        echo "::group::Start iron-proxy"
+        sudo install -m 644 -o root -g root /dev/null /var/log/iron-proxy.log
+        sudo setsid bash -c '/usr/local/bin/iron-proxy -config /tmp/iron-proxy.yaml &>/var/log/iron-proxy.log' &
+        sleep 0.5
+        rm /tmp/iron-proxy-ca/ca.key
+        echo "::endgroup::"
+
+        # Remove docker access for the runner user
+        if [ "${{ inputs.disable-docker }}" = "true" ]; then
+          echo "::group::Disable docker access"
+          sudo gpasswd -d "$(whoami)" docker || true
+          echo "::endgroup::"
+        fi
+
+        # Remove sudo access for the runner user
+        if [ "${{ inputs.disable-sudo }}" = "true" ]; then
+          echo "::group::Disable sudo access"
+          sudo rm -f /etc/sudoers.d/*
+          sudo sed -i '/^runner\b/d' /etc/sudoers
+          echo "::endgroup::"
+        fi
