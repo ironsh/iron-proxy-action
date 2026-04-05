@@ -1,5 +1,5 @@
 name: 'Iron Proxy'
-description: 'Enforce default-deny outbound network access in GitHub Actions. Block unexpected requests, allow only trusted domains, and get a full audit of everything your CI job tries to reach.'
+description: 'Enforce default-deny egress in GitHub Actions. Block unexpected outbound requests and audit all traffic.'
 
 branding:
   icon: 'shield'
