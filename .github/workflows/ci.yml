@@ -110,7 +110,7 @@ jobs:
 
       - name: Verify warn action in logs for httpbin.org
         run: |
-          WARN_LINE=$(jq -c 'select(.audit.host == "httpbin.org" and .request_transforms[]?.annotations?.action == "warn")' /var/log/iron-proxy.log | head -1)
+          WARN_LINE=$(grep '^\s*{' /var/log/iron-proxy.log | jq -c 'select(.audit.host == "httpbin.org" and .request_transforms[]?.annotations?.action == "warn")' | head -1)
           if [ -z "$WARN_LINE" ]; then
             echo "Expected a warn audit log entry for httpbin.org"
             cat /var/log/iron-proxy.log
