@@ -15,10 +15,8 @@ jobs:
       - name: Create egress rules
         run: |
           cat > egress-rules.yaml <<'EOF'
-          rules:
-            - host: example.com
-              methods: ["GET"]
-              paths: ["/*"]
+          domains:
+            - "api.github.com"
           EOF
 
       - name: Set up iron-proxy
@@ -31,20 +29,22 @@ jobs:
 
       - name: Allowed host should succeed
         run: |
-          HTTP_STATUS=$(curl -o /dev/null -w '%{http_code}' https://example.com)
-          echo "example.com returned HTTP $HTTP_STATUS"
+          HTTP_STATUS=$(curl -o /dev/null -w '%{http_code}' https://api.github.com)
+          echo "api.github.com returned HTTP $HTTP_STATUS"
           if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 400 ]; then
-            echo "Expected example.com to succeed, got HTTP $HTTP_STATUS"
+            echo "Expected api.github.com to succeed, got HTTP $HTTP_STATUS"
             exit 1
           fi
 
-      - name: Blocked host should fail
+      - name: Blocked hosts should fail
         run: |
-          if curl -f --max-time 5 https://evil-exfil.net 2>/dev/null; then
-            echo "Expected evil-exfil.net to be blocked, but the request succeeded"
-            exit 1
-          fi
-          echo "evil-exfil.net was correctly blocked"
+          for host in telemetry.badlib.io api.unknown-service.com; do
+            if curl -f --max-time 5 "https://$host" 2>/dev/null; then
+              echo "Expected $host to be blocked, but the request succeeded"
+              exit 1
+            fi
+            echo "$host was correctly blocked"
+          done
 
       - name: Sudo should be disabled
         run: |

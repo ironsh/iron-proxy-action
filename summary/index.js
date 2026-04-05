@@ -79,10 +79,9 @@ const truncPath = (s, max = 64) =>
 console.log("---");
 console.log("");
 console.log(`${BOLD}Iron Proxy Egress Summary${RESET}`);
-const summaryParts = [`${GREEN}${allowed} allowed${RESET}`];
-if (warned > 0) summaryParts.push(`${YELLOW}${warned} warned${RESET}`);
-summaryParts.push(`${RED}${denied} denied${RESET}`);
-console.log(`${audits.length} requests — ${summaryParts.join(", ")}`);
+console.log(`${GREEN}${allowed} requests allowed${RESET}`);
+if (warned > 0) console.log(`${YELLOW}${warned} requests allowed in warn mode${RESET}`);
+console.log(`${RED}${denied} unexpected outbound request${denied === 1 ? "" : "s"} blocked${RESET}`);
 console.log("");
 const hasWarns = warned > 0;
 if (hasWarns) {
