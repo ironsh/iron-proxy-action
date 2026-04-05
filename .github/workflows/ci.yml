@@ -40,11 +40,11 @@ jobs:
 
       - name: Blocked host should fail
         run: |
-          if curl -f --max-time 5 https://httpbin.org/get 2>/dev/null; then
-            echo "Expected httpbin.org to be blocked, but the request succeeded"
+          if curl -f --max-time 5 https://evil-exfil.net 2>/dev/null; then
+            echo "Expected evil-exfil.net to be blocked, but the request succeeded"
             exit 1
           fi
-          echo "httpbin.org was correctly blocked"
+          echo "evil-exfil.net was correctly blocked"
 
       - name: Sudo should be disabled
         run: |
