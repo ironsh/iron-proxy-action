@@ -46,7 +46,7 @@ jobs:
 
 That's it. Your job now has an egress firewall. You can see every endpoint your pipeline attempted to hit in the summary:
 
-![Egress summary](egress-summary.png)
+<img src="egress-summary.png" alt="Egress summary" width="50%">
 
 ## How it works
 
