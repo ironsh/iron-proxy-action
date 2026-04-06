@@ -32,5 +32,17 @@ if [ "$RULES" != "[]" ]; then
   yq -i ".transforms[0].config.rules += $RULES" "$CONFIG"
 fi
 
+# Merge max request body bytes
+MAX_REQUEST_BODY=$(yq '.max_request_body_bytes // ""' "$EGRESS_RULES")
+if [ -n "$MAX_REQUEST_BODY" ]; then
+  yq -i ".proxy.max_request_body_bytes = $MAX_REQUEST_BODY" "$CONFIG"
+fi
+
+# Merge max response body bytes
+MAX_RESPONSE_BODY=$(yq '.max_response_body_bytes // ""' "$EGRESS_RULES")
+if [ -n "$MAX_RESPONSE_BODY" ]; then
+  yq -i ".proxy.max_response_body_bytes = $MAX_RESPONSE_BODY" "$CONFIG"
+fi
+
 echo "=== Generated iron-proxy config ==="
 cat "$CONFIG"

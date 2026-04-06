@@ -101,6 +101,8 @@ runs:
         proxy:
           http_listen: ":80"
           https_listen: ":443"
+          max_request_body_bytes: 1048576
+          max_response_body_bytes: 0
         tls:
           ca_cert: "/tmp/iron-proxy-ca/ca.crt"
           ca_key: "/tmp/iron-proxy-ca/ca.key"

@@ -107,7 +107,18 @@ rules:
     paths: ["/v1/*"]
 ```
 
-You can combine all three in a single file:
+### Body size limits
+
+Cap the maximum allowed request or response body size in bytes. Requests or responses exceeding the limit are blocked. Set to `0` to uncap.
+
+```yaml
+max_request_body_bytes: 1048576  # 1 MiB (default)
+max_response_body_bytes: 0       # uncapped (default)
+```
+
+### Combining options
+
+You can combine all options in a single file:
 
 ```yaml
 domains:
@@ -121,6 +132,9 @@ rules:
   - domain: "api.example.com"
     methods: ["GET"]
     paths: ["/v1/health"]
+
+max_request_body_bytes: 1048576
+max_response_body_bytes: 0
 ```
 
 ## Inputs
