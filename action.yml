@@ -159,7 +159,7 @@ runs:
         # Start iron-proxy
         echo "::group::Start iron-proxy"
         sudo install -m 644 -o root -g root /dev/null /var/log/iron-proxy.log
-        sudo setsid bash -c '/usr/local/bin/iron-proxy -config /tmp/iron-proxy.yaml &>/var/log/iron-proxy.log' &
+        sudo --preserve-env setsid bash -c '/usr/local/bin/iron-proxy -config /tmp/iron-proxy.yaml &>/var/log/iron-proxy.log' &
         sleep 0.5
         rm /tmp/iron-proxy-ca/ca.key
         echo "::endgroup::"
