@@ -128,6 +128,43 @@ jobs:
         if: always()
         run: cat /var/log/iron-proxy.log
 
+  env-test:
+    runs-on: ubuntu-latest
+    env:
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318"
+      OTEL_EXPORTER_OTLP_HEADERS: "x-api-key=test"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create egress rules
+        run: |
+          cat > egress-rules.yaml <<'EOF'
+          domains:
+            - "example.com"
+          EOF
+
+      - name: Set up iron-proxy
+        uses: ./
+        with:
+          egress-rules: egress-rules.yaml
+          warn: true
+          disable-sudo: true
+          disable-docker: true
+
+      - name: Verify OTLP env vars reached the proxy
+        run: |
+          if grep -q "OTEL audit export enabled" /var/log/iron-proxy.log; then
+            echo "OTLP audit export is enabled"
+          else
+            echo "Expected 'OTEL audit export enabled' in proxy logs"
+            cat /var/log/iron-proxy.log
+            exit 1
+          fi
+
+      - name: Dump iron-proxy log
+        if: always()
+        run: cat /var/log/iron-proxy.log
+
   npm-test:
     runs-on: ubuntu-latest
     steps:
