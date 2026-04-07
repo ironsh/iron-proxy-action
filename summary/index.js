@@ -72,6 +72,8 @@ const detailSorted = Object.entries(detailCounts).sort(
 );
 
 const col = (s, w) => s.toString().padEnd(w);
+const truncHost = (s, max = 64) =>
+  s.length > max ? s.slice(0, max - 1) + "…" : s;
 const truncPath = (s, max = 64) =>
   s.length > max ? "…" + s.slice(-(max - 1)) : s;
 
@@ -84,32 +86,34 @@ if (warned > 0) console.log(`${YELLOW}${warned} requests allowed in warn mode${R
 console.log(`${RED}${denied} unexpected outbound request${denied === 1 ? "" : "s"} blocked${RESET}`);
 console.log("");
 const hasWarns = warned > 0;
+const hostCol = 66;
 if (hasWarns) {
   console.log(
-    `${BOLD}${col("HOST", 36)}${col("TOTAL", 8)}${col("ALLOWED", 10)}${col("WARNED", 10)}DENIED${RESET}`
+    `${BOLD}${col("HOST", hostCol)}${col("TOTAL", 8)}${col("ALLOWED", 10)}${col("WARNED", 10)}DENIED${RESET}`
   );
   console.log(
-    `${col("------------------------------------", 36)}${col("-----", 8)}${col("-------", 10)}${col("------", 10)}------`
+    `${col("-".repeat(64), hostCol)}${col("-----", 8)}${col("-------", 10)}${col("------", 10)}------`
   );
 } else {
   console.log(
-    `${BOLD}${col("HOST", 36)}${col("TOTAL", 8)}${col("ALLOWED", 10)}DENIED${RESET}`
+    `${BOLD}${col("HOST", hostCol)}${col("TOTAL", 8)}${col("ALLOWED", 10)}DENIED${RESET}`
   );
   console.log(
-    `${col("------------------------------------", 36)}${col("-----", 8)}${col("-------", 10)}------`
+    `${col("-".repeat(64), hostCol)}${col("-----", 8)}${col("-------", 10)}------`
   );
 }
 for (const [host, c] of hostsSorted) {
   const allowedStr = c.allow > 0 ? `${GREEN}${c.allow}${RESET}` : "0";
   const warnedStr = c.warn > 0 ? `${YELLOW}${c.warn}${RESET}` : "0";
   const deniedStr = c.reject > 0 ? `${RED}${c.reject}${RESET}` : "0";
+  const displayHost = truncHost(host);
   if (hasWarns) {
     console.log(
-      `${col(host, 36)}${col(c.total, 8)}${col("", 0)}${allowedStr}${" ".repeat(10 - c.allow.toString().length)}${warnedStr}${" ".repeat(10 - c.warn.toString().length)}${deniedStr}`
+      `${col(displayHost, hostCol)}${col(c.total, 8)}${col("", 0)}${allowedStr}${" ".repeat(10 - c.allow.toString().length)}${warnedStr}${" ".repeat(10 - c.warn.toString().length)}${deniedStr}`
     );
   } else {
     console.log(
-      `${col(host, 36)}${col(c.total, 8)}${col("", 0)}${allowedStr}${" ".repeat(10 - c.allow.toString().length)}${deniedStr}`
+      `${col(displayHost, hostCol)}${col(c.total, 8)}${col("", 0)}${allowedStr}${" ".repeat(10 - c.allow.toString().length)}${deniedStr}`
     );
   }
 }
