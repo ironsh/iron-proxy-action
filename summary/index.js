@@ -10,8 +10,19 @@ const RESET = "\x1b[0m";
 const logFile =
   (process.env.INPUT_LOG_FILE || "").replace(/^'|'$/g, "") ||
   "/var/log/iron-proxy.log";
+const configFile = "/tmp/iron-proxy.yaml";
 const showFullPaths =
   (process.env["INPUT_SHOW-FULL-PATHS"] || "false").toLowerCase() === "true";
+
+let warnMode = false;
+if (fs.existsSync(configFile)) {
+  try {
+    const configText = fs.readFileSync(configFile, "utf-8");
+    warnMode = /^\s*warn:\s*true\s*$/m.test(configText);
+  } catch (e) {
+    // Ignore config read errors — fall back to not showing the warning
+  }
+}
 
 if (!fs.existsSync(logFile)) {
   console.log(`iron-proxy log file not found: ${logFile}`);
@@ -118,11 +129,16 @@ for (const [host, c] of hostsSorted) {
   }
 }
 console.log("");
-console.log("");
-console.log(
-  `Using this in production? Let's harden it properly. Email matt@iron.sh`
-);
-console.log("");
+
+if (warnMode) {
+  console.log(
+    `${YELLOW}⚠ The proxy is running in warn mode. Requests to non-allowlisted domains are not being blocked.${RESET}`
+  );
+  console.log(
+    `${YELLOW}  Add denied domains to your egress rules, then set warn: 'false' to enforce the allowlist.${RESET}`
+  );
+  console.log("");
+}
 
 // Detail output: per-path breakdown in a collapsible group
 if (showFullPaths) {
