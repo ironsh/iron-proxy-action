@@ -39,6 +39,14 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
+        # Detect architecture
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64|amd64)   ARCH=amd64 ;;
+          aarch64|arm64)  ARCH=arm64 ;;
+          *) echo "::error::Unsupported architecture: $ARCH"; exit 1 ;;
+        esac
+
         # Install dependencies
         echo "::group::Install dependencies"
         if ! command -v jq &>/dev/null; then
@@ -46,7 +54,7 @@ runs:
         fi
         if ! command -v yq &>/dev/null; then
           YQ_VERSION="v4.44.1"
-          curl -fsSL -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          curl -fsSL -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH}"
           chmod +x /tmp/yq
           sudo mv /tmp/yq /usr/local/bin/yq
         fi
@@ -64,7 +72,7 @@ runs:
         # Download and install iron-proxy
         echo "::group::Download and install iron-proxy"
         gh release download "v${VERSION}" --repo ironsh/iron-proxy \
-          --pattern "iron-proxy_${VERSION}_linux_amd64.tar.gz" --output /tmp/iron-proxy.tgz
+          --pattern "iron-proxy_${VERSION}_linux_${ARCH}.tar.gz" --output /tmp/iron-proxy.tgz
         tar -xzf /tmp/iron-proxy.tgz -C /tmp
         sudo mv /tmp/iron-proxy /usr/local/bin/iron-proxy
         sudo chmod +x /usr/local/bin/iron-proxy
