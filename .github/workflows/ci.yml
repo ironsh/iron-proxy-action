@@ -8,9 +8,9 @@ on:
 
 jobs:
   basic-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Create egress rules
         run: |
@@ -71,9 +71,9 @@ jobs:
         run: cat /var/log/iron-proxy.log
 
   warn-mode-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Create egress rules (only example.com)
         run: |
@@ -129,12 +129,12 @@ jobs:
         run: cat /var/log/iron-proxy.log
 
   env-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318"
       OTEL_EXPORTER_OTLP_HEADERS: "x-api-key=test"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Create egress rules
         run: |
@@ -166,9 +166,9 @@ jobs:
         run: cat /var/log/iron-proxy.log
 
   npm-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Create package.json
         run: |

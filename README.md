@@ -125,7 +125,7 @@ rules:
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `version` | `latest` | Iron proxy version to install |
+| `version` | `0.16.0` | Iron proxy version to install |
 | `egress-rules` | `egress-rules.yaml` | Path to your egress rules file |
 | `warn` | `false` | Log denied requests without blocking them |
 | `disable-sudo` | `true` | Revoke sudo so subsequent steps can't bypass the proxy |
