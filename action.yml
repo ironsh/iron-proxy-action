@@ -34,6 +34,10 @@ inputs:
     description: 'TLS handling mode: "mitm" terminates TLS with an ephemeral CA so requests can be inspected by method, path, and body; "sni-only" inspects only the ClientHello SNI hostname and needs no custom CA'
     required: false
     default: 'mitm'
+  otel-env:
+    description: 'Newline-separated KEY=VALUE pairs of OpenTelemetry environment variables (e.g. OTEL_EXPORTER_OTLP_ENDPOINT) passed to the iron-proxy process to enable telemetry export. See https://docs.iron.sh/guides/otel-export'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -42,6 +46,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
+        OTEL_ENV_INPUT: ${{ inputs.otel-env }}
       run: |
         # Detect architecture
         ARCH=$(uname -m)
@@ -266,6 +271,30 @@ runs:
         sudo iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
         sudo iptables -A OUTPUT -j REJECT --reject-with icmp-port-unreachable
         echo "::endgroup::"
+
+        # Export OTEL environment variables so the iron-proxy process (launched
+        # with sudo --preserve-env below) inherits them and exports telemetry.
+        # These are exported only into this step's shell, not $GITHUB_ENV, so
+        # they do not leak into subsequent workflow steps.
+        if [ -n "$OTEL_ENV_INPUT" ]; then
+          echo "::group::Configure OTEL export"
+          while IFS= read -r line; do
+            [ -z "${line// /}" ] && continue
+            case "$line" in \#*) continue ;; esac
+            if [[ "$line" != *=* ]]; then
+              echo "::error::Invalid otel-env entry (expected KEY=VALUE): $line"
+              exit 1
+            fi
+            key="${line%%=*}"
+            if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "::error::Invalid environment variable name in otel-env: '$key'"
+              exit 1
+            fi
+            export "$line"
+            echo "Exported ${key}"
+          done <<< "$OTEL_ENV_INPUT"
+          echo "::endgroup::"
+        fi
 
         # Start iron-proxy
         echo "::group::Start iron-proxy"

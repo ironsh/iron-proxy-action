@@ -142,6 +142,22 @@ iron-proxy examines only the TLS ClientHello SNI hostname and passes the connect
 
 In `sni-only` mode only host-based `domains` and `cidrs` rules can match. Fine-grained `rules` with method and path restrictions still load but never see request data, so they have no effect.
 
+## Telemetry export
+
+iron-proxy can export telemetry over OpenTelemetry. Use the `otel-env` input to pass OTEL environment variables to the proxy process as newline-separated `KEY=VALUE` pairs:
+
+```yaml
+- uses: ironsh/iron-proxy-action@v1
+  with:
+    egress-rules: egress-rules.yaml
+    otel-env: |
+      OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com
+      OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer ${{ secrets.OTLP_TOKEN }}
+      OTEL_SERVICE_NAME=ci-iron-proxy
+```
+
+These variables are passed only to the iron-proxy process. They are not exported to later workflow steps. Export is disabled when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset. See the [OTEL export guide](https://docs.iron.sh/guides/otel-export) for the full list of supported variables.
+
 ## Inputs
 
 | Input | Default | Description |
@@ -150,6 +166,7 @@ In `sni-only` mode only host-based `domains` and `cidrs` rules can match. Fine-g
 | `egress-rules` | `egress-rules.yaml` | Path to your egress rules file |
 | `warn` | `false` | Log denied requests without blocking them |
 | `tls-mode` | `mitm` | TLS handling mode: `mitm` or `sni-only` (see [TLS modes](#tls-modes)) |
+| `otel-env` | `''` | Newline-separated `KEY=VALUE` OpenTelemetry env vars passed to the proxy (see [Telemetry export](#telemetry-export)) |
 | `disable-sudo` | `true` | Revoke sudo so subsequent steps can't bypass the proxy |
 | `disable-docker` | `true` | Revoke Docker access so subsequent steps can't bypass the proxy |
 | `upstream-resolver` | `8.8.8.8:53` | Upstream DNS resolver |
