@@ -128,6 +128,94 @@ jobs:
         if: always()
         run: cat /var/log/iron-proxy.log
 
+  sni-only-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create egress rules
+        run: |
+          cat > egress-rules.yaml <<'EOF'
+          domains:
+            - "api.github.com"
+          EOF
+
+      - name: Set up iron-proxy in sni-only mode
+        uses: ./
+        with:
+          egress-rules: egress-rules.yaml
+          tls-mode: sni-only
+          warn: false
+          disable-sudo: true
+          disable-docker: true
+
+      - name: Config should select sni-only mode and omit the CA
+        run: |
+          MODE=$(yq '.tls.mode' /tmp/iron-proxy.yaml)
+          if [ "$MODE" != "sni-only" ]; then
+            echo "Expected tls.mode to be sni-only, got '$MODE'"
+            cat /tmp/iron-proxy.yaml
+            exit 1
+          fi
+          CA_CERT=$(yq '.tls.ca_cert' /tmp/iron-proxy.yaml)
+          if [ "$CA_CERT" != "null" ]; then
+            echo "Expected no tls.ca_cert in sni-only mode, got '$CA_CERT'"
+            exit 1
+          fi
+          echo "Config correctly selects sni-only mode with no CA"
+
+      - name: No proxy CA should be trusted
+        run: |
+          if [ -f /usr/local/share/ca-certificates/iron-proxy-ca.crt ]; then
+            echo "Expected no iron-proxy CA to be installed in sni-only mode"
+            exit 1
+          fi
+          if [ -n "${SSL_CERT_FILE:-}" ]; then
+            echo "Expected SSL_CERT_FILE to be unset in sni-only mode, got '$SSL_CERT_FILE'"
+            exit 1
+          fi
+          echo "No proxy CA trusted, as expected"
+
+      - name: Allowed host should succeed without the proxy CA
+        run: |
+          # curl trusts only the system bundle here. A success proves the proxy
+          # passed through the real upstream certificate rather than terminating
+          # TLS with its own CA.
+          HTTP_STATUS=$(curl -o /dev/null -w '%{http_code}' https://api.github.com)
+          echo "api.github.com returned HTTP $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "Expected api.github.com to succeed, got HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+      - name: Client should see the real upstream certificate
+        run: |
+          ISSUER=$(echo | openssl s_client -connect api.github.com:443 -servername api.github.com 2>/dev/null | openssl x509 -noout -issuer)
+          echo "api.github.com cert issuer: $ISSUER"
+          if echo "$ISSUER" | grep -qi "iron-proxy"; then
+            echo "Expected the real upstream certificate, but got an iron-proxy CA cert"
+            exit 1
+          fi
+          echo "Upstream certificate is presented directly, as expected"
+
+      - name: Blocked host should fail
+        run: |
+          for host in telemetry.badlib.io api.unknown-service.com; do
+            if curl -f --max-time 5 "https://$host" 2>/dev/null; then
+              echo "Expected $host to be blocked, but the request succeeded"
+              exit 1
+            fi
+            echo "$host was correctly blocked"
+          done
+
+      - name: Generate egress summary
+        if: always()
+        uses: ./summary
+
+      - name: Dump iron-proxy log
+        if: always()
+        run: cat /var/log/iron-proxy.log
+
   env-test:
     runs-on: ubuntu-24.04
     env:
