@@ -51,7 +51,7 @@ That's it. Your job now has an egress firewall. You can see every endpoint your 
 The action:
 
 1. Downloads and installs iron-proxy
-2. Generates an ephemeral CA certificate and trusts it system-wide
+2. Generates an ephemeral CA certificate and trusts it system-wide (in `mitm` mode; see [TLS modes](#tls-modes))
 3. Redirects all DNS to the proxy and locks down outbound traffic with iptables
 4. Revokes sudo and Docker access so subsequent steps can't bypass the proxy
 
@@ -121,6 +121,27 @@ rules:
     paths: ["/v1/health"]
 ```
 
+## TLS modes
+
+The `tls-mode` input controls how iron-proxy handles HTTPS traffic.
+
+### `mitm` (default)
+
+iron-proxy terminates TLS using an ephemeral CA that the action generates and trusts system-wide, inspects the decrypted request, then opens a fresh connection upstream. This is the only mode that can match rules on request method, path, and body, so it is required for fine-grained `rules` and for body-inspecting transforms.
+
+### `sni-only`
+
+iron-proxy examines only the TLS ClientHello SNI hostname and passes the connection through to the upstream without terminating it. No custom CA is generated or trusted, so clients talk directly to the real upstream certificate. Use this when you only need host-level egress control and want to avoid distributing a proxy CA.
+
+```yaml
+- uses: ironsh/iron-proxy-action@v1
+  with:
+    egress-rules: egress-rules.yaml
+    tls-mode: sni-only
+```
+
+In `sni-only` mode only host-based `domains` and `cidrs` rules can match. Fine-grained `rules` with method and path restrictions still load but never see request data, so they have no effect.
+
 ## Inputs
 
 | Input | Default | Description |
@@ -128,6 +149,7 @@ rules:
 | `version` | `0.16.0` | Iron proxy version to install |
 | `egress-rules` | `egress-rules.yaml` | Path to your egress rules file |
 | `warn` | `false` | Log denied requests without blocking them |
+| `tls-mode` | `mitm` | TLS handling mode: `mitm` or `sni-only` (see [TLS modes](#tls-modes)) |
 | `disable-sudo` | `true` | Revoke sudo so subsequent steps can't bypass the proxy |
 | `disable-docker` | `true` | Revoke Docker access so subsequent steps can't bypass the proxy |
 | `upstream-resolver` | `8.8.8.8:53` | Upstream DNS resolver |

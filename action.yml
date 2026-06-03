@@ -30,6 +30,10 @@ inputs:
     description: 'Log denied requests but do not block them'
     required: false
     default: 'false'
+  tls-mode:
+    description: 'TLS handling mode: "mitm" terminates TLS with an ephemeral CA so requests can be inspected by method, path, and body; "sni-only" inspects only the ClientHello SNI hostname and needs no custom CA'
+    required: false
+    default: 'mitm'
 
 runs:
   using: 'composite'
@@ -45,6 +49,13 @@ runs:
           x86_64|amd64)   ARCH=amd64 ;;
           aarch64|arm64)  ARCH=arm64 ;;
           *) echo "::error::Unsupported architecture: $ARCH"; exit 1 ;;
+        esac
+
+        # Validate TLS mode
+        TLS_MODE="${{ inputs.tls-mode }}"
+        case "$TLS_MODE" in
+          mitm|sni-only) ;;
+          *) echo "::error::Invalid tls-mode: '$TLS_MODE' (expected 'mitm' or 'sni-only')"; exit 1 ;;
         esac
 
         # Install dependencies. jq is installed via apt (integrity verified by
@@ -157,18 +168,21 @@ runs:
         sudo chmod +x /usr/local/bin/iron-proxy
         echo "::endgroup::"
 
-        # Generate a CA for TLS interception
-        echo "::group::Generate CA for TLS interception"
-        mkdir -p /tmp/iron-proxy-ca
-        openssl genrsa -out /tmp/iron-proxy-ca/ca.key 2048 2>/dev/null
-        openssl req -x509 -new -nodes \
-          -key /tmp/iron-proxy-ca/ca.key \
-          -sha256 -days 1 \
-          -subj "/CN=iron-proxy CA" \
-          -addext "basicConstraints=critical,CA:TRUE" \
-          -addext "keyUsage=critical,keyCertSign" \
-          -out /tmp/iron-proxy-ca/ca.crt 2>/dev/null
-        echo "::endgroup::"
+        # Generate a CA for TLS interception (mitm mode only; sni-only does not
+        # terminate TLS, so it needs no custom CA)
+        if [ "$TLS_MODE" = "mitm" ]; then
+          echo "::group::Generate CA for TLS interception"
+          mkdir -p /tmp/iron-proxy-ca
+          openssl genrsa -out /tmp/iron-proxy-ca/ca.key 2048 2>/dev/null
+          openssl req -x509 -new -nodes \
+            -key /tmp/iron-proxy-ca/ca.key \
+            -sha256 -days 1 \
+            -subj "/CN=iron-proxy CA" \
+            -addext "basicConstraints=critical,CA:TRUE" \
+            -addext "keyUsage=critical,keyCertSign" \
+            -out /tmp/iron-proxy-ca/ca.crt 2>/dev/null
+          echo "::endgroup::"
+        fi
 
         # Generate iron-proxy config
         echo "::group::Generate iron-proxy config"
@@ -188,9 +202,6 @@ runs:
         proxy:
           http_listen: ":80"
           https_listen: ":443"
-        tls:
-          ca_cert: "/tmp/iron-proxy-ca/ca.crt"
-          ca_key: "/tmp/iron-proxy-ca/ca.key"
         transforms:
           - name: allowlist
             config:
@@ -207,6 +218,16 @@ runs:
         log:
           level: "info"
         EOF
+
+        # Configure the TLS section for the selected mode. In mitm mode iron-proxy
+        # terminates TLS with the ephemeral CA generated above; in sni-only mode it
+        # inspects only the ClientHello SNI hostname and forwards the connection
+        # without terminating, so no CA is needed.
+        if [ "$TLS_MODE" = "sni-only" ]; then
+          yq -i '.tls.mode = "sni-only"' /tmp/iron-proxy.yaml
+        else
+          yq -i '.tls.mode = "mitm" | .tls.ca_cert = "/tmp/iron-proxy-ca/ca.crt" | .tls.ca_key = "/tmp/iron-proxy-ca/ca.key"' /tmp/iron-proxy.yaml
+        fi
         echo "::endgroup::"
 
         # Merge user egress rules into the allowlist config
@@ -214,16 +235,19 @@ runs:
         "${{ github.action_path }}/merge-egress-rules.sh" "$EGRESS_RULES" /tmp/iron-proxy.yaml
         echo "::endgroup::"
 
-        # Trust the CA system-wide
-        echo "::group::Trust CA system-wide"
-        sudo cp /tmp/iron-proxy-ca/ca.crt \
-          /usr/local/share/ca-certificates/iron-proxy-ca.crt
-        sudo update-ca-certificates
-        echo "SSL_CERT_FILE=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
-        echo "NODE_EXTRA_CA_CERTS=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
-        echo "REQUESTS_CA_BUNDLE=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
-        echo "UV_NATIVE_TLS=true" >> $GITHUB_ENV
-        echo "::endgroup::"
+        # Trust the CA system-wide (mitm mode only; sni-only clients talk directly
+        # to the real upstream certificate, so there is nothing extra to trust)
+        if [ "$TLS_MODE" = "mitm" ]; then
+          echo "::group::Trust CA system-wide"
+          sudo cp /tmp/iron-proxy-ca/ca.crt \
+            /usr/local/share/ca-certificates/iron-proxy-ca.crt
+          sudo update-ca-certificates
+          echo "SSL_CERT_FILE=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
+          echo "NODE_EXTRA_CA_CERTS=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
+          echo "REQUESTS_CA_BUNDLE=/tmp/iron-proxy-ca/ca.crt" >> $GITHUB_ENV
+          echo "UV_NATIVE_TLS=true" >> $GITHUB_ENV
+          echo "::endgroup::"
+        fi
 
         # Stop systemd-resolved to free port 53
         echo "::group::Stop systemd-resolved"
@@ -248,7 +272,9 @@ runs:
         sudo install -m 644 -o root -g root /dev/null /var/log/iron-proxy.log
         sudo --preserve-env setsid bash -c '/usr/local/bin/iron-proxy -config /tmp/iron-proxy.yaml &>/var/log/iron-proxy.log' &
         sleep 0.5
-        rm /tmp/iron-proxy-ca/ca.key
+        if [ "$TLS_MODE" = "mitm" ]; then
+          rm /tmp/iron-proxy-ca/ca.key
+        fi
         echo "::endgroup::"
 
         # Remove docker access for the runner user
